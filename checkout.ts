@@ -91,7 +91,7 @@ const pageToBase64 = async (
         });
 };
 
-const buildCheckoutImage = async (
+const buildCheckoutBase64Image = async (
     logoUrl: string,
     imgSize: ImageSize = { width: 1080, height: 566 }
 ): Promise<string> => {
@@ -235,8 +235,8 @@ const checkoutLogoOnlyLayout = (encodedLogo: string, wide: boolean): string => {
 
 (async () => {
     // Build the checkout image
-    const test = await buildCheckoutImage(
-        "https://loop-entity-logos.s3.us-east-2.amazonaws.com/LoopCrypto.png",
+    const test = await buildCheckoutBase64Image(
+        "img/logo2.png",
         // "img/logo1.png",
         {
             width: 1080,
@@ -245,6 +245,8 @@ const checkoutLogoOnlyLayout = (encodedLogo: string, wide: boolean): string => {
     ).catch((error) => {
         throw new Error(`Could not build the checkout frame image\n${error}`);
     });
+
+    console.log(test);
 
     try {
         await encodedImageToFile(test, "img/checkout.png");
