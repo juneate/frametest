@@ -1,6 +1,5 @@
 import puppeteer, { Page, Browser } from "puppeteer";
-import Jimp from "jimp";
-type ImageSize = { width: number; height: number };
+import sharp, { Metadata } from "sharp";
 
 const strToBase64 = (base64: string, mimeType: string): string => {
     return `data:${mimeType};base64,${base64}`;
@@ -19,27 +18,8 @@ const fetchImage = async (imagePath: string): Promise<Buffer> => {
 
 const processAndEncodeImage = async (
     imagePath: string
-): Promise<{ encodedImg: string; metadata: ImageSize }> => {
+): Promise<{ encodedImg: string; metadata: Metadata }> => {
     try {
-        const image = await Jimp.read(imagePath);
-
-        //const resizedImage = await image.resize(width, height);
-        const encodedImg = await image.getBase64Async(Jimp.MIME_PNG);
-
-        console.log(encodedImg);
-
-        return {
-            encodedImg,
-            metadata: {
-                width: image.bitmap.width,
-                height: image.bitmap.height,
-            },
-        };
-    } catch (error) {
-        throw new Error(`Error processing image:\n${error}`);
-    }
-
-    /*     try {
         const imageAtPath = isAbsolutePath(imagePath)
             ? await fetchImage(imagePath).catch((error) => {
                   throw new Error(
@@ -55,29 +35,12 @@ const processAndEncodeImage = async (
         const encodedImg = strToBase64(base64, `image/png`);
 
         return { encodedImg, metadata };
-     */
+    } catch (error) {
+        throw new Error(`Error processing image:\n${error}`);
+    }
 };
 
 const encodedImageToFile = async (encodedImage: string, fileName: string) => {
-    // Strip off the data URL prefix to get just the Base64-encoded bytes
-    const data = encodedImage.replace(/^data:image\/\w+;base64,/, "");
-
-    try {
-        // Convert the Base64 string to a buffer
-        const imageBuffer = Buffer.from(data, "base64");
-
-        // Read the image from the buffer
-        const image = await Jimp.read(imageBuffer);
-
-        // Save the image to a file
-        await image.writeAsync(fileName);
-
-        console.log(`Image saved to ${fileName}`);
-    } catch (error) {
-        throw new Error(`Error saving the image to "${fileName}"\n${error}`);
-    }
-
-    /* 
     // Strip off the data URL prefix to get just the Base64-encoded bytes
     const data = encodedImage.split(",")[1];
 
@@ -91,9 +54,10 @@ const encodedImageToFile = async (encodedImage: string, fileName: string) => {
             throw new Error(
                 `Error saving the image to "${fileName}"\n${error}`
             );
-        }); */
+        });
 };
 
+type ImageSize = { width: number; height: number };
 const launchHeadlessBrowser = async (
     imgSize: ImageSize
 ): Promise<{ page: Page; browser: Browser }> => {
