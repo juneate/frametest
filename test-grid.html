@@ -21,16 +21,18 @@
                 font-family: Poppins, sans-serif;
             }
             .container {
-                /* transform: scale(0.5); */
+                transform: scale(0.5);
                 --footer-height: 3rem;
                 --gap: 2rem;
                 background-color: #fff;
                 width: 1080px;
                 height: 566px;
                 padding: 4rem 4rem 2.5rem;
-                display: flex;
-                flex-direction: column;
+                display: grid;
                 gap: var(--gap);
+                grid-template-rows:
+                    calc(100% - var(--gap) - var(--footer-height))
+                    var(--footer-height);
             }
             .logo.wide img:nth-child(2) {
                 display: none;
@@ -39,9 +41,8 @@
                 display: none;
             }
             .logo {
-                /* flex-basis: auto; */
-                /* place-content: center; */
-                height: 382px;
+                place-content: center;
+                height: 100%;
                 width: 100%;
                 padding: 2rem 4rem 2.5rem;
             }
@@ -55,12 +56,11 @@
             }
             .footer {
                 font-size: 1.25rem;
-                display: flex;
+                display: grid;
+                grid-template-columns: auto auto;
                 gap: 1.5rem;
                 align-items: end;
                 justify-content: end;
-                height: 3rem;
-                width: 100%;
             }
             .powered {
                 text-transform: uppercase;
@@ -73,16 +73,18 @@
             .loop svg {
                 object-fit: contain;
                 height: 100%;
-                width: 100%;
+                width: auto;
             }
         </style>
     </head>
     <body>
         <div class="container">
-            <div class="logo">
-                <img src="img/lightnift.png" alt="" />
-                <img src="img/lightnift-tall.png" alt="" />
-            </div>
+            <header>
+                <div class="logo">
+                    <img src="img/lightnift.png" alt="" />
+                    <img src="img/lightnift-tall.png" alt="" />
+                </div>
+            </header>
             <footer class="footer">
                 <span class="powered">Checkout powered by</span
                 ><span class="loop"
