@@ -111,7 +111,7 @@ interface BitmapOptions {
     nonJpegMimeType?: string;
 }
 const processAndEncodeImage = async (
-    imagePath: string,
+    pathOrSvg: string,
     {
         maxWidth = Jimp.AUTO,
         maxHeight = Jimp.AUTO,
@@ -122,8 +122,13 @@ const processAndEncodeImage = async (
     try {
         // If the image is an SVG, just load as text and convert to Base64
         //    ! Note, this requires SVG to end with `.svg` extension, this can be improved
-        if (imagePath.toLowerCase().endsWith(`.svg`)) {
-            const svgString = (await fileToBuffer(imagePath)).toString(`utf-8`);
+        if (
+            pathOrSvg.toLowerCase().endsWith(`.svg`) ||
+            pathOrSvg.toLowerCase().startsWith(`<svg`)
+        ) {
+            const svgString = pathOrSvg.toLowerCase().endsWith(`.svg`)
+                ? (await fileToBuffer(pathOrSvg)).toString(`utf-8`)
+                : pathOrSvg;
 
             // Get the height and width of the SVG, from the <svg> tag, or from the viewBox attribute
             return {
@@ -136,7 +141,7 @@ const processAndEncodeImage = async (
         }
 
         // If the image is a bitmap, load and trim transparent pixels from the outside
-        const image = await trimTransparentPixels(await Jimp.read(imagePath));
+        const image = await trimTransparentPixels(await Jimp.read(pathOrSvg));
 
         // Resize image if it exceeds the maximum dimensions
         if (
@@ -300,30 +305,15 @@ const CheckoutImageLayout = ({
     );
 };
 
-const processAndEncodeImageRecursively = async (
+const buildSvgFromLayout = async (
     Layout: (props: CheckoutImageLayoutProps) => JSX.Element,
-    logoUrl: string,
     imgSize: ImageSize,
-    qualities: number[],
-    maxImgSize: number,
-    layoutFonts: Font[],
-    currentQualityIndex: number = 0
+    encodedImg: string,
+    metadata: ImageSize,
+    logoHeightMax: number,
+    layoutFonts: Font[]
 ): Promise<string> => {
-    if (currentQualityIndex >= qualities.length) {
-        throw new Error(`Failed to encode logo`);
-    }
-
-    const logoHeightMax = 382;
-
-    // Base64 encode the image
-    const { encodedImg, metadata } = await processAndEncodeImage(logoUrl, {
-        maxHeight: logoHeightMax,
-        imgQuality: qualities[currentQualityIndex],
-    }).catch((error) => {
-        throw new Error(`Logo was not encoded\n${error}`);
-    });
-
-    const svg = await satori(
+    return await satori(
         Layout({
             totalWidth: imgSize.width,
             totalHeight: imgSize.height,
@@ -338,36 +328,40 @@ const processAndEncodeImageRecursively = async (
             height: imgSize.height,
             fonts: layoutFonts,
         }
-    );
-
-    const result = formatAsBase64Str(svgToBase64(svg), `image/svg+xml`);
-    const size = strToSize(result);
-
-    // If size isn't below the maximum, try again with a lower quality
-    return size > maxImgSize
-        ? await processAndEncodeImageRecursively(
-              Layout,
-              logoUrl,
-              imgSize,
-              qualities,
-              maxImgSize,
-              layoutFonts,
-              currentQualityIndex + 1
-          )
-        : result;
+    ).catch(async (error) => {
+        throw new Error(`Failed to build image from layout\n${error}`);
+    });
 };
 
 const buildCheckoutBase64Image = async (
-    logoUrl: string,
+    logoUrlOrSvg: string,
     imgSize: ImageSize = { width: 1080, height: 566 },
-    maxFileSize: number = 390
+    maxImgSize: number = 390,
+    qualities: number[] = [100],
+    currentQualityIndex: number = 0
 ): Promise<string> => {
-    return await processAndEncodeImageRecursively(
+    if (currentQualityIndex >= qualities.length) {
+        throw new Error(
+            `Failed to encode an image smaller than ${maxImgSize}kB`
+        );
+    }
+
+    const logoHeightMax = 382;
+
+    // Base64 encode the image
+    const { encodedImg, metadata } = await processAndEncodeImage(logoUrlOrSvg, {
+        maxHeight: logoHeightMax,
+        imgQuality: qualities[currentQualityIndex],
+    }).catch((error) => {
+        throw new Error(`Logo was not encoded\n${error}`);
+    });
+
+    const svgLayout = await buildSvgFromLayout(
         CheckoutImageLayout,
-        logoUrl,
         imgSize,
-        [80, 65, 50],
-        maxFileSize,
+        encodedImg,
+        metadata,
+        logoHeightMax,
         [
             {
                 name: "Poppins",
@@ -379,6 +373,78 @@ const buildCheckoutBase64Image = async (
             },
         ]
     );
+
+    const result = formatAsBase64Str(svgToBase64(svgLayout), `image/svg+xml`);
+    const size = strToSize(result);
+
+    // If size isn't below the maximum, try again with a lower quality
+    return size > maxImgSize
+        ? await buildCheckoutBase64Image(
+              logoUrlOrSvg,
+              imgSize,
+              maxImgSize,
+              qualities,
+              currentQualityIndex + 1
+          )
+        : result;
+};
+
+const buildTextAsSvg = async (
+    imgWidth: number,
+    text: string
+): Promise<string> => {
+    let imgHeight = 144;
+
+    if (text.length > 16) {
+        imgHeight = 64;
+    } else if (text.length > 14) {
+        imgHeight = 80;
+    } else if (text.length > 12) {
+        imgHeight = 96;
+    } else if (text.length > 10) {
+        imgHeight = 112;
+    } else if (text.length > 8) {
+        imgHeight = 128;
+    }
+
+    return await satori(
+        <div
+            style={{
+                display: `flex`,
+                fontWeight: 500,
+                fontSize: `${imgHeight}px`,
+                fontFamily: `Poppins, sans-serif`,
+                color: `#333`,
+                width: `${imgWidth}px`,
+                height: `${imgHeight}px`,
+                alignContent: `center`,
+                justifyContent: `center`,
+                whiteSpace: `nowrap`,
+                textTransform: `uppercase`,
+                lineHeight: `1`,
+                letterSpacing: `-0.08em`,
+            }}
+        >
+            {text}
+        </div>,
+        {
+            debug: false,
+            width: imgWidth,
+            height: imgHeight,
+            fonts: [
+                {
+                    name: "Poppins",
+                    data: await fileToBuffer(
+                        `https://s3.us-east-2.amazonaws.com/files.loopcrypto.xyz/fonts/Poppins-Medium.ttf`
+                    ),
+                    weight: 500,
+                    style: "normal",
+                },
+            ],
+        }
+    ).catch(async (error) => {
+        throw new Error(`Failed to build image from layout\n${error}`);
+    });
 };
 
 const allLogos = [
@@ -915,15 +981,40 @@ const checkFileSize = async (url: string): Promise<number> => {
     });
 };
 
+const saveToFile = async (path: string, data: string): Promise<void> => {
+    try {
+        await base64ToFile(data, path);
+    } catch (error) {
+        throw new Error(`Could not save the image\n${error}`);
+    }
+};
+
 (async () => {
     let over400 = 0;
     const problemImgs: any[] = [];
+
+    // console.log(`Encoding this many images: `, allLogos.length);
+
+    /*     [
+        `Random named co`,
+        `Whatever man`,
+        `Testing co`,
+        `Blahblah`,
+        `Paragraph`,
+        `Mehhh`,
+        `Bing boooong`,
+        `Meh`,
+        `Blahhshhsd Company Ltd`,
+    ].map(async (name) => {
+        const companyName = await buildTextAsSvg(824, name);
+
+        await writeFile(`img/text/${name}.svg`, companyName);
+    }); */
 
     Promise.allSettled(
         allLogos.map(async ({ logo_url }, index) => {
             // Build the checkout image
 
-            // [ ] "Can no longer take SVG logos as input"
             const test = await buildCheckoutBase64Image(
                 // "https://uploads-ssl.webflow.com/61fae2f8dbd7a34c26e01ba1/6286a426c8d7ed2c0859e08c_Logo.svg",
                 // "img/loop-crypto-long-black.svg",
@@ -933,7 +1024,8 @@ const checkFileSize = async (url: string): Promise<number> => {
                     width: 1080,
                     height: 566,
                 },
-                390 // Maxfilesize
+                390, // maxImgSize
+                [80, 65, 50]
             )
                 .then(async (img) => {
                     const logoSize =
@@ -962,7 +1054,7 @@ const checkFileSize = async (url: string): Promise<number> => {
                     console.log(
                         `${index}, ${logoSize.toFixed(
                             2
-                        )}kb ---> ${encodedSize.toFixed(2)}kb (${(
+                        )}kB ---> ${encodedSize.toFixed(2)}kB (${(
                             encodedSize / logoSize
                         ).toFixed(2)}x)`
                     );
@@ -972,18 +1064,27 @@ const checkFileSize = async (url: string): Promise<number> => {
 
                     return img;
                 })
-                .catch((error) => {
+                .catch(async (error) => {
+                    const companyName = await buildTextAsSvg(
+                        824,
+                        `Some company`
+                    );
+
+                    await writeFile(`img/companyName.svg`, companyName);
+
+                    const backup = await buildCheckoutBase64Image(companyName, {
+                        width: 1080,
+                        height: 566,
+                    });
+
+                    await saveToFile(`img/prod-logos/${index}.svg`, backup);
+
                     throw new Error(
                         `Could not build the checkout frame image\n${error}`
                     );
                 });
 
-            try {
-                await base64ToFile(test, `img/prod-logos/${index}.svg`);
-                // await base64ToFile(test, `img/anSvg.svg`);
-            } catch (error) {
-                throw new Error(`Could not save the image\n${error}`);
-            }
+            await saveToFile(`img/prod-logos/${index}.svg`, test);
         }) as any
     ).then((results) => {
         const failures = results.filter(
