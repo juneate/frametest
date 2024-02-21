@@ -352,6 +352,8 @@ const buildCheckoutBase64Image = async (
     const { encodedImg, metadata } = await processAndEncodeImage(logoUrlOrSvg, {
         maxHeight: logoHeightMax,
         imgQuality: qualities[currentQualityIndex],
+        nonJpegMimeType:
+            currentQualityIndex === 0 ? Jimp.MIME_PNG : Jimp.MIME_GIF, // Try to build in PNG first, then GIF
     }).catch((error) => {
         throw new Error(`Logo was not encoded\n${error}`);
     });
@@ -954,6 +956,13 @@ const allLogos = [
     },
 ];
 
+export const checkoutLogoReplacements: ReplacementUrl[] = [
+    {
+        replace: "paragraph.xyz",
+        with: "https://loop-entity-logos.s3.us-east-2.amazonaws.com/paragraph.png",
+    },
+];
+
 const checkFileSize = async (url: string): Promise<number> => {
     if (!isAbsolutePath(url)) {
         try {
@@ -989,6 +998,18 @@ const saveToFile = async (path: string, data: string): Promise<void> => {
     }
 };
 
+export type ReplacementUrl = { replace: string; with: string };
+export const urlWithReplacements = (
+    url: string,
+    replacementTable: ReplacementUrl[]
+) => {
+    const replacement = replacementTable.find(({ replace }) =>
+        url.toLowerCase().includes(replace.toLowerCase())
+    );
+
+    return replacement?.with ?? url;
+};
+
 (async () => {
     let over400 = 0;
     const problemImgs: any[] = [];
@@ -1019,13 +1040,13 @@ const saveToFile = async (path: string, data: string): Promise<void> => {
                 // "https://uploads-ssl.webflow.com/61fae2f8dbd7a34c26e01ba1/6286a426c8d7ed2c0859e08c_Logo.svg",
                 // "img/loop-crypto-long-black.svg",
                 // "img/logo2.png",
-                logo_url,
+                urlWithReplacements(logo_url, checkoutLogoReplacements),
                 {
                     width: 1080,
                     height: 566,
                 },
                 390, // maxImgSize
-                [80, 65, 50]
+                [80, 80, 60, 40]
             )
                 .then(async (img) => {
                     const logoSize =
